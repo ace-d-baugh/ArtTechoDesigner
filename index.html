@@ -7,36 +7,6 @@
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Lucide Icons Import (Module Script) -->
-    <script type="module">
-        import { createIcons, Eye, EyeOff } from 'https://cdn.skypack.dev/lucide@0.320.0';
-        
-        /**
-         * Globally exposed function to refresh the visibility icon.
-         * This function is needed because Lucide's imports are module-scoped.
-         */
-        window.refreshTransparencyIcon = (isTransparent) => {
-            const iconButton = document.getElementById('toggle-transparent');
-            if (!iconButton) return;
-            
-            // Critical Fix: Clear the existing SVG content to force Lucide to redraw the new icon
-            iconButton.innerHTML = ''; 
-
-            // 1. Update the data attribute to 'eye-off' or 'eye'
-            const iconName = isTransparent ? 'eye-off' : 'eye';
-            iconButton.setAttribute('data-lucide', iconName);
-            
-            // 2. Re-render the icon for the new attribute
-            createIcons({ icons: { Eye, EyeOff } });
-        };
-
-        // Initial render for the default 'eye' icon
-        window.addEventListener('DOMContentLoaded', () => {
-             // We need to wait for the button to be in the DOM before the initial render
-             window.refreshTransparencyIcon(false);
-        });
-    </script>
-    
     <style>
         /* Base styles for Light Mode */
         body { transition: background-color 0.3s; }
@@ -191,7 +161,7 @@
                 <button id="theme-toggle" class="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors duration-150">
                     <!-- Sun icon (initial state: light mode) -->
                     <svg id="sun-icon" class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                    <!-- FIX: Moon icon color changed to text-sky-300 for high visibility in dark mode -->
+                    <!-- Moon icon for dark mode -->
                     <svg id="moon-icon" class="w-6 h-6 text-gray-200 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
                 </button>
             </div>
@@ -236,15 +206,15 @@
                     <div id="bgColorHexWrapper" class="relative flex-grow">
                         <!-- Transparency Indicator Overlay (covers hex input when transparent) -->
                         <div id="bg-indicator">
-                             <!-- FIX: Text label for "TRANSPARENT" is now inside the overlay -->
+                             <!-- Text label for "TRANSPARENT" is now inside the overlay -->
                             <span id="bg-indicator-label" class="absolute inset-0 flex items-center justify-center font-bold text-sm">TRANSPARENT</span>
                         </div> 
                         <!-- Hex Input -->
                         <!-- The input is disabled when transparent, but value is not changed, preventing the flash -->
                         <input type="text" id="bgColorHex" value="#ffffff" maxlength="7" class="w-full p-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm font-mono">
-                        <!-- FIX: Transparency Toggle Button (using data-lucide directly on the button) -->
-                        <button id="toggle-transparent" data-lucide="eye" class="absolute inset-y-0 right-0 flex items-center p-2 rounded-r-md hover:bg-gray-100 transition-colors text-gray-600 w-10 h-10" title="Toggle Transparency">
-                             <!-- Lucide SVG will be injected here -->
+                        <!-- Transparency Toggle Button -->
+                        <button id="toggle-transparent" class="absolute inset-y-0 right-0 flex items-center justify-center p-2 rounded-r-md hover:bg-gray-100 transition-colors text-gray-600 w-10" title="Toggle Transparency">
+                             <!-- SVG will be injected here -->
                         </button>
                     </div>
                 </div>
@@ -451,6 +421,53 @@
             }, 200);
         }
 
+        /**
+         * Function to refresh the visibility icon.
+         */
+        function refreshTransparencyIcon(isTransparent) {
+            const iconButton = document.getElementById('toggle-transparent');
+            if (!iconButton) return;
+            
+            // Clear existing content
+            iconButton.innerHTML = ''; 
+
+            // Create the appropriate SVG icon manually
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', '20');
+            svg.setAttribute('height', '20');
+            svg.setAttribute('viewBox', '0 0 24 24');
+            svg.setAttribute('fill', 'none');
+            svg.setAttribute('stroke', 'currentColor');
+            svg.setAttribute('stroke-width', '2');
+            svg.setAttribute('stroke-linecap', 'round');
+            svg.setAttribute('stroke-linejoin', 'round');
+            
+            if (isTransparent) {
+                // Eye-Off icon paths
+                const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path1.setAttribute('d', 'M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24');
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', '1');
+                line.setAttribute('y1', '1');
+                line.setAttribute('x2', '23');
+                line.setAttribute('y2', '23');
+                svg.appendChild(path1);
+                svg.appendChild(line);
+            } else {
+                // Eye icon paths
+                const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path1.setAttribute('d', 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z');
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', '12');
+                circle.setAttribute('cy', '12');
+                circle.setAttribute('r', '3');
+                svg.appendChild(path1);
+                svg.appendChild(circle);
+            }
+            
+            iconButton.appendChild(svg);
+        }
+
         // --- Background Transparency UI Update ---
         function updateBackgroundUI() {
             if (state.isBgTransparent) {
@@ -459,7 +476,7 @@
                 bgColorPickerIndicator.classList.add('transparent');
                 bgColorWrapper.classList.add('transparent-bg-wrapper');
                 
-                // FIX: Disable the input and hide label, show overlay label
+                // Disable the input and hide label, show overlay label
                 bgColorHexInput.disabled = true;
                 bgIndicatorLabel.style.display = 'flex';
                 
@@ -469,16 +486,14 @@
                 bgColorPickerIndicator.classList.remove('transparent');
                 bgColorWrapper.classList.remove('transparent-bg-wrapper');
                 
-                // FIX: Re-enable the input, set value, hide overlay label
+                // Re-enable the input, set value, hide overlay label
                 bgColorHexInput.disabled = false;
                 bgColorHexInput.value = state.bgColor;
                 bgIndicatorLabel.style.display = 'none';
             }
             
-            // FIX: Use the globally exposed function to update the icon
-            if (typeof window.refreshTransparencyIcon === 'function') {
-                window.refreshTransparencyIcon(state.isBgTransparent);
-            }
+            // Update the icon
+            refreshTransparencyIcon(state.isBgTransparent);
 
             render();
         }
