@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Art Techo Designer</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons Import (Module Script) -->
+    <script type="module">
+        import { createIcons, Eye, EyeOff } from 'https://cdn.skypack.dev/lucide@0.320.0';
+        
+        /**
+         * Globally exposed function to refresh the visibility icon.
+         * This function is needed because Lucide's imports are module-scoped.
+         */
+        window.refreshTransparencyIcon = (isTransparent) => {
+            const iconButton = document.getElementById('toggle-transparent');
+            if (!iconButton) return;
+            
+            // Critical Fix: Clear the existing SVG content to force Lucide to redraw the new icon
+            iconButton.innerHTML = ''; 
+
+            // 1. Update the data attribute to 'eye-off' or 'eye'
+            const iconName = isTransparent ? 'eye-off' : 'eye';
+            iconButton.setAttribute('data-lucide', iconName);
+            
+            // 2. Re-render the icon for the new attribute
+            createIcons({ icons: { Eye, EyeOff } });
+        };
+
+        // Initial render for the default 'eye' icon
+        window.addEventListener('DOMContentLoaded', () => {
+             // We need to wait for the button to be in the DOM before the initial render
+             window.refreshTransparencyIcon(false);
+        });
+    </script>
+    
+    <style>
+        /* Base styles for Light Mode */
+        body { transition: background-color 0.3s; }
+        
+        /* Custom styles for the drawing area and controls */
+        #drawingCanvas {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            touch-action: none;
+            display: block; 
+            cursor: crosshair;
+            background-color: white;
+        }
+        /* Custom scrollbar style */
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background-color: #6b7280; border-radius: 3px; }
+        .custom-scroll::-webkit-scrollbar-track { background-color: #f3f4f6; }
+
+        /* Style for the active tool button */
+        .tool-active {
+            background-color: #3b82f6 !important; /* Blue-500 */
+            color: white !important;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+        }
+
+        /* Resizing Handle Style */
+        #resize-handle {
+            position: absolute; bottom: -8px; right: -8px; width: 16px; height: 16px;
+            background-color: #3b82f6; border: 2px solid white; border-radius: 4px;
+            cursor: nwse-resize; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Line Length Pop-up Style */
+        #line-length-popup {
+            transform: translate(-50%, -120%); 
+            white-space: nowrap;
+            transition: opacity 0.1s ease-in-out;
+        }
+        
+        /* Custom color picker sizing for uniformity */
+        .color-input-wrapper {
+            width: 40px; 
+            height: 40px; 
+            flex-shrink: 0;
+            padding: 2px; /* Add padding to make space for the border-2 */
+            box-sizing: content-box;
+        }
+        
+        /* --- Background Transparency Indicator Style --- */
+        
+        /* Indicator for the Hex/Toggle area */
+        #bg-indicator {
+            position: absolute; 
+            inset: 0; 
+            background-color: white; /* Light mode default */
+            z-index: 10;
+            border: 1px solid #d1d5db; /* border-gray-300 */
+            border-radius: 6px; /* rounded-md */
+            pointer-events: none; 
+            transition: opacity 0.3s ease;
+            opacity: 0; /* Hidden by default */
+        }
+        
+        /* Indicator for the Color Picker box */
+        #bg-indicator-color-picker {
+            position: absolute; 
+            inset: 0; 
+            background-color: white; /* Match canvas container color for effect */
+            z-index: 10;
+            border: 1px solid #d1d5db; 
+            border-radius: 6px; 
+            pointer-events: none; 
+            opacity: 0; /* Hidden by default */
+            transition: opacity 0.3s ease;
+        }
+        
+        /* Common Opacity for both indicators when transparent is active */
+        #bg-indicator.transparent, #bg-indicator-color-picker.transparent {
+            opacity: 1;
+        }
+        
+        /* Red diagonal line ONLY for the color picker box indicator */
+        #bg-indicator-color-picker.transparent::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #ef4444; /* red-500 */
+            transform: translateY(-50%) rotate(-45deg);
+        }
+
+        /* Rule to hide the native color picker when transparent */
+        .color-input-wrapper input[type="color"] {
+            opacity: 1;
+            pointer-events: auto;
+            transition: opacity 0.3s ease;
+        }
+        .color-input-wrapper.transparent-bg-wrapper input[type="color"] {
+            opacity: 0; /* Makes the color picker 'disappear' showing the wrapper underneath */
+            pointer-events: none;
+        }
+        
+        /* Styling for the "TRANSPARENT" text label inside the hex indicator */
+        #bg-indicator-label {
+            color: #4b5563; /* Default text color (gray-600) for contrast on light mode indicator */
+        }
+
+
+        /* --- Dark Mode Styles --- */
+        body[data-theme='dark'] { background-color: #1f2937; }
+        body[data-theme='dark'] .bg-white { background-color: #374151; }
+        body[data-theme='dark'] .text-gray-800, 
+        body[data-theme='dark'] .text-gray-700,
+        body[data-theme='dark'] .text-gray-900 { color: #f3f4f6; }
+        body[data-theme='dark'] .border-b, body[data-theme='dark'] .border-t,
+        body[data-theme='dark'] .border-gray-300 { border-color: #4b5563; }
+        body[data-theme='dark'] .tool-btn:not(.tool-active) { background-color: #374151; color: #f3f4f6; }
+        body[data-theme='dark'] .hover\:bg-gray-100:hover:not(.tool-active):not(.bg-gray-200) { background-color: #4b5563; }
+        body[data-theme='dark'] .bg-gray-200 { background-color: #4b5563; color: #f3f4f6; }
+        body[data-theme='dark'] .hover\:bg-gray-300:hover { background-color: #6b7280; }
+        body[data-theme='dark'] input[type="text"] { background-color: #4b5563; border-color: #6b7280; color: #f3f4f6; }
+        body[data-theme='dark'] #drawingCanvas { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.8); }
+        body[data-theme='dark'] .slider-track { background-color: #4b5563; }
+        
+        /* Dark mode for indicators */
+        body[data-theme='dark'] #bg-indicator { background-color: #4b5563; border-color: #6b7280;}
+        body[data-theme='dark'] #bg-indicator-color-picker { background-color: #4b5563; border-color: #6b7280; }
+        
+        /* Dark mode specific color for the visibility icon to ensure contrast */
+        /* Lucide SVGs are injected directly, so we target the button class */
+        body[data-theme='dark'] #toggle-transparent {
+            color: #d1d5db; /* light gray (gray-300) for contrast on dark background */
+        }
+        
+        /* Dark mode for the "TRANSPARENT" text label */
+        body[data-theme='dark'] #bg-indicator-label {
+            color: #f3f4f6; /* Light text color for contrast on dark mode indicator */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 flex items-start justify-center font-sans" data-theme="light">
+
+    <div id="app" class="flex flex-col md:flex-row gap-6 max-w-7xl w-full">
+
+        <!-- MS Paint-Style Toolbar (Left Panel) -->
+        <div class="bg-white p-6 rounded-xl shadow-lg w-full md:w-80 flex-shrink-0 custom-scroll overflow-y-auto max-h-[90vh] transition-colors">
+            
+            <!-- App Header and Theme Toggle -->
+            <div class="flex justify-between items-center mb-6 border-b pb-2">
+                <h1 class="text-2xl font-bold text-gray-800 transition-colors">Art Techo Designer</h1>
+                <button id="theme-toggle" class="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors duration-150">
+                    <!-- Sun icon (initial state: light mode) -->
+                    <svg id="sun-icon" class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                    <!-- FIX: Moon icon color changed to text-sky-300 for high visibility in dark mode -->
+                    <svg id="moon-icon" class="w-6 h-6 text-sky-300 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                </button>
+            </div>
+
+            <!-- 1. Tools Section -->
+            <div class="mb-6">
+                <h2 class="text-lg font-semibold mb-3 text-gray-700 transition-colors">Tools</h2>
+                <div class="grid grid-cols-3 gap-3">
+                    <button id="tool-line" data-tool="line" class="tool-btn p-3 rounded-lg border border-gray-300 hover:bg-gray-100 transition duration-150 tool-active">
+                        <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        <span class="text-xs mt-1 block">Line</span>
+                    </button>
+                    <button id="tool-circle" data-tool="circle" class="tool-btn p-3 rounded-lg border border-gray-300 hover:bg-gray-100 transition duration-150">
+                        <svg class="w-6 h-6 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="9" stroke-width="2" fill="none"/>
+                            <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>
+                        </svg>
+                        <span class="text-xs mt-1 block">Circle</span>
+                    </button>
+                    <button id="tool-eraser" data-tool="eraser" class="tool-btn p-3 rounded-lg border border-gray-300 hover:bg-gray-100 transition duration-150">
+                        <svg class="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        <span class="text-xs mt-1 block">Eraser</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. Color Controls (New Order: Background, Line/Circle, Glow) -->
+            <div class="mb-6 border-t pt-4">
+                <h2 class="text-lg font-semibold mb-3 text-gray-700 transition-colors">Colors</h2>
+
+                <!-- 2a. Background Color Control (Refined) -->
+                <label class="block text-sm font-medium text-gray-700 mb-1 transition-colors">Background</label>
+                <div class="flex items-center space-x-2 mb-4">
+                    <!-- Color Picker Input (Always visible) -->
+                    <div class="relative color-input-wrapper" id="bgColorWrapper">
+                        <!-- Indicator for the Color Picker box (covers the box when transparent) -->
+                        <div id="bg-indicator-color-picker"></div> 
+                        <input type="color" id="bgColor" value="#ffffff" class="w-full h-full p-0 rounded-md border-2 border-gray-300 cursor-pointer transition-colors">
+                    </div>
+
+                    <!-- Hex Input with integrated Transparency Toggle Button -->
+                    <div id="bgColorHexWrapper" class="relative flex-grow">
+                        <!-- Transparency Indicator Overlay (covers hex input when transparent) -->
+                        <div id="bg-indicator">
+                             <!-- FIX: Text label for "TRANSPARENT" is now inside the overlay -->
+                            <span id="bg-indicator-label" class="absolute inset-0 flex items-center justify-center font-bold text-sm">TRANSPARENT</span>
+                        </div> 
+                        <!-- Hex Input -->
+                        <!-- The input is disabled when transparent, but value is not changed, preventing the flash -->
+                        <input type="text" id="bgColorHex" value="#ffffff" maxlength="7" class="w-full p-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm font-mono">
+                        <!-- FIX: Transparency Toggle Button (using data-lucide directly on the button) -->
+                        <button id="toggle-transparent" data-lucide="eye" class="absolute inset-y-0 right-0 flex items-center p-2 rounded-r-md hover:bg-gray-100 transition-colors text-gray-600 w-10 h-10" title="Toggle Transparency">
+                             <!-- Lucide SVG will be injected here -->
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2b. Line/Circle Color -->
+                <label for="drawColor" class="block text-sm font-medium text-gray-700 mb-1 transition-colors">Line/Circle</label>
+                <div class="flex items-center space-x-2 mb-4">
+                     <div class="relative color-input-wrapper">
+                        <input type="color" id="drawColor" value="#000000" class="w-full h-full p-0 rounded-md border-2 border-gray-300 cursor-pointer transition-colors">
+                    </div>
+                    <input type="text" id="drawColorHex" value="#000000" maxlength="7" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm font-mono">
+                </div>
+                
+                <!-- 2c. Glow Color -->
+                <label for="glowColor" class="block text-sm font-medium text-gray-700 mb-1 transition-colors">Glow Color</label>
+                <div class="flex items-center space-x-2 mb-4">
+                    <div class="relative color-input-wrapper">
+                        <!-- DEFAULT GLOW COLOR SET TO #77ffff -->
+                        <input type="color" id="glowColor" value="#77ffff" class="w-full h-full p-0 rounded-md border-2 border-gray-300 cursor-pointer transition-colors">
+                    </div>
+                    <!-- DEFAULT GLOW COLOR SET TO #77ffff -->
+                    <input type="text" id="glowColorHex" value="#77ffff" maxlength="7" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm font-mono">
+                </div>
+
+                <!-- 2d. Glow Distance Slider (Removed distance number display) -->
+                <label for="glowDistance" class="block text-sm font-medium text-gray-700 mb-1 transition-colors">Glow Distance</label>
+                <div class="flex items-center space-x-3 mb-1">
+                    <input type="range" id="glowDistance" min="0" max="3" value="0" step="1"
+                           class="w-full h-2 bg-gray-200 slider-track rounded-lg appearance-none cursor-pointer">
+                </div>
+                <!-- Visual Marks: Using flex-1 on inner spans ensures even distribution for 4 points -->
+                <div class="flex justify-between text-xs text-gray-500 mt-0 px-0">
+                    <span class="flex-1 text-left">0px</span>
+                    <span class="flex-1 text-center">1px</span>
+                    <span class="flex-1 text-center">2px</span>
+                    <span class="flex-1 text-right">3px</span>
+                </div>
+            </div>
+
+            <!-- 3. Thickness Controls -->
+            <div class="mb-6 border-t pt-4">
+                <h2 class="text-lg font-semibold mb-3 text-gray-700 transition-colors">Line Thickness</h2>
+                <div class="flex space-x-2 justify-center">
+                    <button data-thickness="2" class="thickness-btn w-1/3 p-3 border rounded-lg hover:bg-gray-100 transition duration-150">2px</button>
+                    <button data-thickness="4" class="thickness-btn w-1/3 p-3 border rounded-lg hover:bg-gray-100 transition duration-150 tool-active">4px</button>
+                    <button data-thickness="6" class="thickness-btn w-1/3 p-3 border rounded-lg hover:bg-gray-100 transition duration-150">6px</button>
+                </div>
+            </div>
+
+            <!-- 4. Circle Diameter Controls -->
+             <div class="mb-6 border-t pt-4">
+                <h2 class="text-lg font-semibold mb-3 text-gray-700 transition-colors">Circle Diameter</h2>
+                <div class="flex space-x-4 justify-center">
+                    <button data-diameter="8" class="diameter-btn w-1/2 p-3 border rounded-lg hover:bg-gray-100 transition duration-150 tool-active">8px</button>
+                    <button data-diameter="10" class="diameter-btn w-1/2 p-3 border rounded-lg hover:bg-gray-100 transition duration-150">10px</button>
+                </div>
+            </div>
+            
+            <!-- 5. Grid Toggle -->
+            <div class="mb-6 border-t pt-4">
+                <label for="grid-toggle" class="flex items-center cursor-pointer">
+                    <div class="relative w-10 h-6">
+                        <input type="checkbox" id="grid-toggle" checked class="sr-only">
+                        <div id="grid-track" class="absolute inset-0 rounded-full transition-colors"></div>
+                        <div id="grid-dot" class="absolute w-4 h-4 bg-white rounded-full shadow transition-transform top-1"></div>
+                    </div>
+                    <div class="ml-3 text-gray-700 font-medium transition-colors">
+                        Show Grid Dots
+                    </div>
+                </label>
+            </div>
+
+
+            <!-- 6. Save/Export Actions -->
+            <div class="border-t pt-4">
+                <h2 class="text-lg font-semibold mb-3 text-gray-700 transition-colors">Actions</h2>
+                <div id="message-box" class="hidden p-2 mb-2 text-sm bg-green-100 text-green-700 rounded-md"></div>
+                <div class="space-y-3">
+                    <button id="clear-canvas" class="w-full py-3 bg-red-500 text-white font-bold rounded-lg shadow-md hover:bg-red-600 transition duration-150">
+                        Clear Canvas
+                    </button>
+                    <button id="save-png" class="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150">
+                        Save as PNG
+                    </button>
+                    <button id="save-svg" class="w-full py-3 bg-purple-600 text-white font-bold rounded-lg shadow-md hover:bg-purple-700 transition duration-150">
+                        Save as SVG
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drawing Canvas (Right Area) -->
+        <div class="flex-grow flex justify-center items-start pt-4">
+            <div id="canvas-container" class="relative p-0 bg-white shadow-2xl" style="border-radius: 0;">
+                <canvas id="drawingCanvas" width="500" height="500" class="border-2 border-gray-400"></canvas>
+                <div id="resize-handle"></div>
+                <!-- LINE LENGTH POP-UP -->
+                <div id="line-length-popup" class="absolute hidden bg-gray-900 text-white text-xs px-2 py-1 rounded-md shadow-lg pointer-events-none z-10 transition-opacity duration-100 ease-in-out">
+                    0 px
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 10;
+        const MAX_CANVAS_SIZE = 500;
+        
+        // State management
+        const state = {
+            drawings: [], 
+            currentTool: 'line',
+            
+            // --- NEW COLOR/STYLE ORDER ---
+            bgColor: '#ffffff',
+            isBgTransparent: false, 
+            lineColor: '#000000',
+            glowColor: '#77ffff', 
+            glowDistance: 0,
+            // -----------------------------
+            
+            lineThickness: 4, 
+            circleDiameter: 8, 
+            isDrawing: false,
+            isResizing: false,
+            startPos: {x: 0, y: 0},
+            showGrid: true, 
+            canvasWidth: MAX_CANVAS_SIZE,
+            canvasHeight: MAX_CANVAS_SIZE,
+        };
+
+        // DOM elements
+        const canvas = document.getElementById('drawingCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const canvasContainer = document.getElementById('canvas-container');
+        const resizeHandle = document.getElementById('resize-handle');
+        const tools = document.querySelectorAll('.tool-btn');
+        const thicknessButtons = document.querySelectorAll('.thickness-btn');
+        const diameterButtons = document.querySelectorAll('.diameter-btn');
+        
+        // Color Inputs and Controls
+        const bgColorWrapper = document.getElementById('bgColorWrapper');
+        const bgColorPickerIndicator = document.getElementById('bg-indicator-color-picker');
+        const bgIndicator = document.getElementById('bg-indicator');
+        const bgIndicatorLabel = document.getElementById('bg-indicator-label');
+        const bgColorInput = document.getElementById('bgColor');
+        const bgColorHexInput = document.getElementById('bgColorHex');
+        const toggleTransparentButton = document.getElementById('toggle-transparent');
+        
+        const drawColorInput = document.getElementById('drawColor');
+        const drawColorHexInput = document.getElementById('drawColorHex');
+        
+        const glowColorInput = document.getElementById('glowColor');
+        const glowColorHexInput = document.getElementById('glowColorHex');
+        const glowDistanceSlider = document.getElementById('glowDistance');
+
+        const gridToggle = document.getElementById('grid-toggle');
+        const gridTrack = document.getElementById('grid-track');
+        const gridDot = document.getElementById('grid-dot');
+        const msgBox = document.getElementById('message-box');
+        const themeToggle = document.getElementById('theme-toggle');
+        const sunIcon = document.getElementById('sun-icon');
+        const moonIcon = document.getElementById('moon-icon');
+        const clearCanvasButton = document.getElementById('clear-canvas');
+        const lineLengthPopup = document.getElementById('line-length-popup');
+
+
+        // --- Utility Functions ---
+
+        /** Converts coordinates to snap to the nearest 10px grid dot. */
+        function snapToGrid(coord) {
+            return Math.round(coord / GRID_SIZE) * GRID_SIZE;
+        }
+
+        /** Shows a temporary message in the UI */
+        function showMessage(text, isError = false) {
+            msgBox.textContent = text;
+            msgBox.className = `p-2 mb-2 text-sm rounded-md ${isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
+            msgBox.style.display = 'block';
+            setTimeout(() => {
+                msgBox.style.display = 'none';
+            }, 3000);
+        }
+
+        /** Calculates distance and updates the pop-up position and content. */
+        function updateLineLengthDisplay(x1, y1, x2, y2, cursorX_container, cursorY_container) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.round(Math.sqrt(dx * dx + dy * dy));
+            lineLengthPopup.textContent = `${length} px`;
+            lineLengthPopup.style.left = `${cursorX_container}px`;
+            lineLengthPopup.style.top = `${cursorY_container}px`;
+            lineLengthPopup.classList.remove('hidden');
+            lineLengthPopup.style.opacity = 1;
+        }
+
+        /** Hides the line length display. */
+        function hideLineLengthDisplay() {
+            lineLengthPopup.style.opacity = 0;
+            setTimeout(() => {
+                if (lineLengthPopup.style.opacity === '0') {
+                    lineLengthPopup.classList.add('hidden');
+                }
+            }, 200);
+        }
+
+        // --- Background Transparency UI Update ---
+        function updateBackgroundUI() {
+            if (state.isBgTransparent) {
+                // Indicators: show overlay
+                bgIndicator.classList.add('transparent');
+                bgColorPickerIndicator.classList.add('transparent');
+                bgColorWrapper.classList.add('transparent-bg-wrapper');
+                
+                // FIX: Disable the input and hide label, show overlay label
+                bgColorHexInput.disabled = true;
+                bgIndicatorLabel.style.display = 'flex';
+                
+            } else {
+                // Indicators: hide overlay
+                bgIndicator.classList.remove('transparent');
+                bgColorPickerIndicator.classList.remove('transparent');
+                bgColorWrapper.classList.remove('transparent-bg-wrapper');
+                
+                // FIX: Re-enable the input, set value, hide overlay label
+                bgColorHexInput.disabled = false;
+                bgColorHexInput.value = state.bgColor;
+                bgIndicatorLabel.style.display = 'none';
+            }
+            
+            // FIX: Use the globally exposed function to update the icon
+            if (typeof window.refreshTransparencyIcon === 'function') {
+                window.refreshTransparencyIcon(state.isBgTransparent);
+            }
+
+            render();
+        }
+
+
+        // --- Drawing Logic (Canvas Renderer) ---
+
+        /** Draws the grid guide dots */
+        function drawGrid(targetCtx = ctx) {
+            if (!state.showGrid) return;
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            targetCtx.fillStyle = isDark ? '#6b7280' : '#ccc';
+            
+            const width = targetCtx.canvas.width;
+            const height = targetCtx.canvas.height;
+
+            for (let i = 0; i <= width; i += GRID_SIZE) {
+                for (let j = 0; j <= height; j += GRID_SIZE) {
+                    if (i <= width && j <= height) {
+                        targetCtx.beginPath();
+                        targetCtx.arc(i, j, 1, 0, 2 * Math.PI); 
+                        targetCtx.fill();
+                    }
+                }
+            }
+        }
+
+        /** Applies glow effect to the current context settings. */
+        function applyGlow(line, targetCtx) {
+            if (line.glowDistance > 0) {
+                targetCtx.shadowBlur = line.glowDistance * 5; 
+                targetCtx.shadowColor = line.glowColor;
+                targetCtx.shadowOffsetX = 0;
+                targetCtx.shadowOffsetY = 0;
+            } else {
+                targetCtx.shadowBlur = 0;
+                targetCtx.shadowColor = 'transparent';
+            }
+        }
+
+        /** Resets shadows after drawing. */
+        function resetGlow(targetCtx) {
+            targetCtx.shadowBlur = 0;
+            targetCtx.shadowColor = 'transparent';
+            targetCtx.shadowOffsetX = 0;
+            targetCtx.shadowOffsetY = 0;
+        }
+        
+        /** Draws a line segment with glow. */
+        function drawLine(line, targetCtx) {
+            const { x1, y1, x2, y2 } = line.data;
+            const thickness = line.thickness;
+            
+            // 1. Apply Glow
+            applyGlow(line, targetCtx);
+
+            // 2. Draw Line
+            targetCtx.beginPath();
+            targetCtx.moveTo(x1, y1);
+            targetCtx.lineTo(x2, y2);
+            
+            targetCtx.strokeStyle = line.color;
+            targetCtx.lineWidth = thickness;
+            targetCtx.lineCap = 'round';
+            targetCtx.stroke();
+            
+            // 3. Reset Glow
+            resetGlow(targetCtx);
+        }
+        
+        /** Draws a circle onto the target context, implementing the knockout effect and glow. */
+        function drawCircle(circle, targetCtx) {
+            const { x, y } = circle.data;
+            const thickness = circle.thickness;
+            const radius = circle.data.diameter / 2;
+
+            // 1. Apply Glow
+            applyGlow(circle, targetCtx);
+            
+            // 2. Draw the stroke (the visible part)
+            targetCtx.beginPath();
+            targetCtx.arc(x, y, radius, 0, 2 * Math.PI);
+            targetCtx.strokeStyle = circle.color;
+            targetCtx.lineWidth = thickness;
+            targetCtx.stroke();
+            
+            // 3. Reset Glow BEFORE drawing the knockout fill layer
+            resetGlow(targetCtx);
+
+            // 4. Draw the background-colored fill for the knockout effect (hiding the line)
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            let knockoutFill = state.bgColor;
+            
+            if (state.isBgTransparent) {
+                // If transparent, use the canvas container color (white/dark gray)
+                // Using the specific color values from the CSS for accuracy
+                knockoutFill = isDark ? '#374151' : '#ffffff'; 
+            }
+            
+            targetCtx.beginPath();
+            const knockoutRadius = radius - thickness / 2;
+            if (knockoutRadius > 0) {
+                targetCtx.arc(x, y, knockoutRadius, 0, 2 * Math.PI); 
+                targetCtx.fillStyle = knockoutFill; 
+                targetCtx.fill();
+            }
+        }
+
+
+        /** Main render loop */
+        function render(elements = state.drawings, targetCtx = ctx) {
+            const width = targetCtx.canvas.width;
+            const height = targetCtx.canvas.height;
+            
+            // 1. Clear the canvas and set background
+            targetCtx.clearRect(0, 0, width, height);
+            
+            if (!state.isBgTransparent) {
+                targetCtx.fillStyle = state.bgColor;
+                targetCtx.fillRect(0, 0, width, height);
+            }
+            
+            // 2. Draw Grid (only on the main canvas)
+            if (targetCtx === ctx) {
+                drawGrid(targetCtx);
+            }
+
+            // 3. Draw Lines (Layer 1: Bottom)
+            elements.filter(e => e.type === 'line').forEach(line => {
+                drawLine(line, targetCtx);
+            });
+            
+            // 4. Draw Circles (Layer 2: Top)
+            elements.filter(e => e.type === 'circle').forEach(circle => {
+                drawCircle(circle, targetCtx);
+            });
+        }
+        
+        // --- Export Logic ---
+
+        /** Generates the SVG string based on the current drawings and canvas size. */
+        function generateSVGString() {
+            const exportElements = state.drawings;
+            const width = state.canvasWidth;
+            const height = state.canvasHeight;
+            let svgContent = '';
+            
+            // 1. Add Background Layer
+            if (!state.isBgTransparent) {
+                svgContent += `<rect x="0" y="0" width="${width}" height="${height}" fill="${state.bgColor}" />\n`;
+            } else {
+                svgContent += `<!-- Transparent background (using canvas container color for knockout/visual context) -->\n`;
+            }
+
+            // 2. Lines 
+            svgContent += '<g class="lines">\n';
+            exportElements.filter(e => e.type === 'line').forEach(line => {
+                const { x1, y1, x2, y2 } = line.data;
+                const thickness = line.thickness;
+                
+                svgContent += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${line.color}" stroke-width="${thickness}" stroke-linecap="round" />\n`;
+            });
+            svgContent += '</g>\n';
+            
+            // 3. Circles 
+            svgContent += '<g class="circles">\n';
+            exportElements.filter(e => e.type === 'circle').forEach((circle) => {
+                const { x, y } = circle.data;
+                const thickness = circle.thickness;
+                const radius = circle.data.diameter / 2;
+                
+                // Get correct knockout fill color
+                const isDark = document.body.getAttribute('data-theme') === 'dark';
+                let fillColor = state.isBgTransparent ? (isDark ? '#374151' : '#ffffff') : state.bgColor;
+                
+                // A) Draw the fill circle to hide the lines underneath it. 
+                const knockoutRadius = radius - thickness/2;
+                if (knockoutRadius > 0) {
+                     svgContent += `<circle cx="${x}" cy="${y}" r="${knockoutRadius}" fill="${fillColor}" />\n`; 
+                }
+
+                // B) Draw the stroke for the circle border. (Drawn on top)
+                svgContent += `<circle cx="${x}" cy="${y}" r="${radius}" stroke="${circle.color}" stroke-width="${thickness}" fill="none" />\n`;
+            });
+            svgContent += '</g>\n';
+
+            return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">\n${svgContent}</svg>`;
+        }
+        
+        // --- Export Functions ---
+        
+        async function exportImage(format) {
+            
+            if (state.drawings.length === 0) {
+                 showMessage('The drawing area is empty. Nothing to save.', true);
+                 return;
+            }
+
+            const downloadLink = document.createElement('a');
+            downloadLink.download = `art-techo-drawing.${format}`;
+
+            if (format === 'svg') {
+                const svgString = generateSVGString();
+                const svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
+                downloadLink.href = URL.createObjectURL(svgBlob);
+                downloadLink.click();
+                showMessage('Image saved as SVG (Vector File).');
+
+            } else if (format === 'png') {
+                const width = state.canvasWidth;
+                const height = state.canvasHeight;
+                
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = width;
+                tempCanvas.height = height;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // IMPORTANT: Render the final image without the grid dots
+                const originalShowGrid = state.showGrid;
+                state.showGrid = false; 
+                render(state.drawings, tempCtx); 
+                state.showGrid = originalShowGrid; // Restore grid state
+
+                downloadLink.href = tempCanvas.toDataURL('image/png');
+                downloadLink.click();
+                showMessage('Image saved as PNG (Raster Image).');
+                render(); // Rerender main canvas with grid restored
+            }
+        }
+
+
+        // --- Event Listeners and Setup ---
+        
+        // Dark Mode Toggle
+        function toggleTheme() {
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            if (isDark) {
+                document.body.setAttribute('data-theme', 'light');
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+            } else {
+                document.body.setAttribute('data-theme', 'dark');
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+            }
+            render(); 
+        }
+        themeToggle.addEventListener('click', toggleTheme);
+        
+        // Tool Selection
+        tools.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tools.forEach(b => b.classList.remove('tool-active'));
+                btn.classList.add('tool-active');
+                state.currentTool = btn.dataset.tool;
+            });
+        });
+        
+        // Thickness Selection
+        thicknessButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                thicknessButtons.forEach(b => b.classList.remove('tool-active'));
+                btn.classList.add('tool-active');
+                state.lineThickness = parseInt(btn.dataset.thickness);
+            });
+        });
+
+        // Diameter Selection
+        diameterButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                diameterButtons.forEach(b => b.classList.remove('tool-active'));
+                btn.classList.add('tool-active');
+                state.circleDiameter = parseInt(btn.dataset.diameter);
+            });
+        });
+
+
+        // --- Color Synchronization and Transparency Toggle ---
+
+        // 1. Background Color
+        bgColorInput.addEventListener('input', (e) => { 
+            state.bgColor = e.target.value.toLowerCase(); 
+            state.isBgTransparent = false; 
+            bgColorHexInput.value = state.bgColor;
+            updateBackgroundUI();
+        });
+        bgColorHexInput.addEventListener('input', (e) => {
+            const value = e.target.value.toLowerCase();
+            if (value.match(/^#([0-9a-f]{3}){1,2}$/i)) { 
+                state.bgColor = value; 
+                state.isBgTransparent = false;
+                bgColorInput.value = value;
+                updateBackgroundUI();
+            }
+            // Note: If the user types 'transparent' it is ignored and the UI controls it
+        });
+        toggleTransparentButton.addEventListener('click', (e) => {
+            e.preventDefault(); // Prevent focus change/form submission
+            state.isBgTransparent = !state.isBgTransparent;
+            updateBackgroundUI();
+        });
+        
+
+        // 2. Line/Circle Color
+        drawColorInput.addEventListener('input', (e) => { 
+            state.lineColor = e.target.value.toLowerCase(); 
+            drawColorHexInput.value = state.lineColor; 
+        });
+        drawColorHexInput.addEventListener('input', (e) => {
+            const value = e.target.value.toLowerCase();
+            if (value.match(/^#([0-9a-f]{3}){1,2}$/i)) { 
+                state.lineColor = value; 
+                drawColorInput.value = value; 
+            }
+        });
+
+        // 3. Glow Color
+        glowColorInput.addEventListener('input', (e) => { 
+            state.glowColor = e.target.value.toLowerCase(); 
+            glowColorHexInput.value = state.glowColor; 
+            render(); // Rerender immediately to show color change
+        });
+        glowColorHexInput.addEventListener('input', (e) => {
+            const value = e.target.value.toLowerCase();
+            if (value.match(/^#([0-9a-f]{3}){1,2}$/i)) { 
+                state.glowColor = value; 
+                glowColorInput.value = value; 
+                render(); // Rerender immediately to show color change
+            }
+        });
+        
+        // 4. Glow Distance Slider
+        glowDistanceSlider.addEventListener('input', (e) => {
+            state.glowDistance = parseInt(e.target.value);
+            render(); // Rerender immediately to show glow change
+        });
+        
+        // Grid Toggle Fix: Visual Logic
+        function updateGridToggleVisual(isChecked) {
+            if (gridTrack && gridDot) {
+                if (isChecked) {
+                    gridTrack.classList.remove('bg-gray-600');
+                    gridTrack.classList.add('bg-blue-500');
+                    gridDot.classList.remove('left-1');
+                    gridDot.classList.add('translate-x-4', 'left-1');
+                } else {
+                    gridTrack.classList.add('bg-gray-600');
+                    gridTrack.classList.remove('bg-blue-500');
+                    gridDot.classList.remove('translate-x-4');
+                    gridDot.classList.add('left-1');
+                }
+            }
+        }
+        
+        gridToggle.addEventListener('change', (e) => { 
+            state.showGrid = e.target.checked; 
+            updateGridToggleVisual(state.showGrid); 
+            render(); 
+        });
+
+        // --- Canvas Resizing Logic ---
+        function updateCanvasSize(newWidth, newHeight) {
+            let snappedWidth = snapToGrid(Math.max(GRID_SIZE, newWidth));
+            let snappedHeight = snapToGrid(Math.max(GRID_SIZE, newHeight));
+            
+            snappedWidth = Math.min(MAX_CANVAS_SIZE, snappedWidth);
+            snappedHeight = Math.min(MAX_CANVAS_SIZE, snappedHeight);
+
+            canvas.width = snappedWidth;
+            canvas.height = snappedHeight;
+            canvasContainer.style.width = `${snappedWidth}px`;
+            canvasContainer.style.height = `${snappedHeight}px`;
+
+            state.canvasWidth = snappedWidth;
+            state.canvasHeight = snappedHeight;
+
+            render();
+        }
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            state.isResizing = true;
+            canvas.style.pointerEvents = 'none'; 
+            document.body.style.cursor = 'nwse-resize';
+            e.stopPropagation();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!state.isResizing) return;
+            const rect = canvas.getBoundingClientRect();
+            let newWidth = e.clientX - rect.left;
+            let newHeight = e.clientY - rect.top;
+            newWidth = Math.min(MAX_CANVAS_SIZE, Math.max(50, newWidth));
+            newHeight = Math.min(MAX_CANVAS_SIZE, Math.max(50, newHeight));
+            updateCanvasSize(newWidth, newHeight);
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (state.isResizing) {
+                state.isResizing = false;
+                canvas.style.pointerEvents = 'auto'; 
+                document.body.style.cursor = 'default';
+                updateCanvasSize(state.canvasWidth, state.canvasHeight);
+            }
+        });
+        // --- End Resizing Logic ---
+
+        // Drawing Handlers 
+        function getCanvasCoords(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: snapToGrid(clientX - rect.left),
+                y: snapToGrid(clientY - rect.top),
+                rawX: clientX - rect.left, 
+                rawY: clientY - rect.top
+            };
+        }
+        
+        /** Safely extracts clientX/Y from mouse or touch event. */
+        function getEventClientCoords(event) {
+            if (event.clientX !== undefined) {
+                return { clientX: event.clientX, clientY: event.clientY };
+            } else if (event.touches && event.touches.length > 0) {
+                return { clientX: event.touches[0].clientX, clientY: event.touches[0].clientY };
+            } else if (event.changedTouches && event.changedTouches.length > 0) {
+                 return { clientX: event.changedTouches[0].clientX, clientY: event.changedTouches[0].clientY };
+            }
+            return { clientX: 0, clientY: 0 }; // Fallback
+        }
+
+        function handlePointerStart(event) {
+            if (state.isResizing) return;
+            event.preventDefault(); 
+            
+            const { clientX, clientY } = getEventClientCoords(event);
+
+            const { x, y } = getCanvasCoords(clientX, clientY);
+            
+            state.startPos = {x, y};
+            state.isDrawing = true;
+
+            const newDrawingProps = {
+                color: state.lineColor,
+                thickness: state.lineThickness,
+                glowColor: state.glowColor,
+                glowDistance: state.glowDistance,
+            };
+
+            if (state.currentTool === 'circle') {
+                state.drawings.push({
+                    type: 'circle',
+                    data: {x, y, diameter: state.circleDiameter}, 
+                    ...newDrawingProps
+                });
+                render();
+                state.isDrawing = false; 
+            } else if (state.currentTool === 'eraser') {
+                const circleIndex = state.drawings.findIndex(e => e.type === 'circle' && e.data.x === x && e.data.y === y );
+                if (circleIndex !== -1) { state.drawings.splice(circleIndex, 1); render(); showMessage('Circle deleted.', true); }
+            } else if (state.currentTool === 'line') {
+                state.drawings.push({
+                    type: 'line',
+                    data: {x1: x, y1: y, x2: x, y2: y}, 
+                    ...newDrawingProps
+                });
+            }
+        }
+        function handlePointerMove(event) {
+            if (!state.isDrawing) return;
+            event.preventDefault();
+            
+            const { clientX, clientY } = getEventClientCoords(event);
+            
+            const { x, y, rawX, rawY } = getCanvasCoords(clientX, clientY);
+
+            if (state.currentTool === 'line') {
+                const currentLine = state.drawings[state.drawings.length - 1];
+                if (currentLine && currentLine.type === 'line') { 
+                    currentLine.data.x2 = x; 
+                    currentLine.data.y2 = y; 
+                    render(); 
+                    updateLineLengthDisplay(currentLine.data.x1, currentLine.data.y1, x, y, rawX, rawY);
+                }
+            }
+        }
+        function handlePointerEnd(event) {
+            if (!state.isDrawing) return;
+            state.isDrawing = false;
+            
+            hideLineLengthDisplay();
+            
+            const { clientX, clientY } = getEventClientCoords(event);
+
+            const endRect = canvas.getBoundingClientRect();
+            const endX = snapToGrid(clientX - endRect.left);
+            const endY = snapToGrid(clientY - endRect.top);
+
+            if (state.currentTool === 'line') {
+                const currentLine = state.drawings[state.drawings.length - 1];
+                if (currentLine && currentLine.type === 'line') {
+                    if (state.startPos.x === endX && state.startPos.y === endY) { 
+                        // If it's just a click (start and end are the same grid point), remove the line
+                        state.drawings.pop(); 
+                    } 
+                    else {
+                        currentLine.data.x1 = state.startPos.x;
+                        currentLine.data.y1 = state.startPos.y;
+                        currentLine.data.x2 = endX;
+                        currentLine.data.y2 = endY;
+                    }
+                }
+            } else if (state.currentTool === 'eraser') {
+                 const eraseX = endX;
+                 const eraseY = endY;
+                
+                const LINE_SNAP_TOLERANCE = 15; 
+                let deleted = false;
+                
+                for (let i = state.drawings.length - 1; i >= 0; i--) {
+                    const el = state.drawings[i];
+                    if (el.type !== 'line') continue;
+                    const x1 = el.data.x1, y1 = el.data.y1, x2 = el.data.x2, y2 = el.data.y2;
+                    
+                    const A = eraseX - x1, B = eraseY - y1, C = x2 - x1, D = y2 - y1;
+                    const dot = A * C + B * D;
+                    const len_sq = C * C + D * D;
+                    let param = len_sq != 0 ? dot / len_sq : -1;
+
+                    let closestX = (param < 0) ? x1 : (param > 1) ? x2 : x1 + param * C;
+                    let closestY = (param < 0) ? y1 : (param > 1) ? y2 : y1 + param * D;
+
+                    const dist = Math.sqrt(Math.pow(eraseX - closestX, 2) + Math.pow(eraseY - closestY, 2));
+                    
+                    if (dist < LINE_SNAP_TOLERANCE) {
+                        state.drawings.splice(i, 1);
+                        deleted = true;
+                        break;
+                    }
+                }
+                if (deleted) { showMessage('Line segment deleted.', true); }
+            }
+            render();
+        }
+
+        canvas.addEventListener('mousedown', handlePointerStart);
+        canvas.addEventListener('mousemove', handlePointerMove);
+        canvas.addEventListener('mouseup', handlePointerEnd);
+        canvas.addEventListener('touchstart', handlePointerStart);
+        canvas.addEventListener('touchmove', handlePointerMove);
+        canvas.addEventListener('touchend', handlePointerEnd);
+        
+        // Export/Action Buttons
+        document.getElementById('save-png').addEventListener('click', () => exportImage('png'));
+        document.getElementById('save-svg').addEventListener('click', () => exportImage('svg'));
+        document.getElementById('clear-canvas').addEventListener('click', () => { 
+            state.drawings = [];
+            render(); 
+            showMessage('Canvas cleared successfully!', true); 
+        });
+
+        // Initial setup
+        function initializeApp() {
+            updateCanvasSize(state.canvasWidth, state.canvasHeight);
+            
+            // Set initial active thickness class (default 4px)
+            document.querySelector(`.thickness-btn[data-thickness="${state.lineThickness}"]`).classList.add('tool-active');
+            
+            // Set initial active diameter class (default 8px)
+            document.querySelector(`.diameter-btn[data-diameter="${state.circleDiameter}"]`).classList.add('tool-active');
+            
+            // Initialize visual state for the grid toggle (default: on)
+            gridToggle.checked = state.showGrid;
+            updateGridToggleVisual(state.showGrid); 
+            
+            // Initialize visual state for the background toggle (default: white, not transparent)
+            updateBackgroundUI();
+            
+            // Manually hide the transparent label initially, as updateBackgroundUI will handle it
+            bgIndicatorLabel.style.display = 'none';
+
+            render();
+        }
+
+        window.onload = initializeApp;
+    </script>
+</body>
+</html>
