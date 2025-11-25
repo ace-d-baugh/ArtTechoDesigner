@@ -67,6 +67,8 @@
             pointer-events: none; 
             transition: opacity 0.3s ease;
             opacity: 0; /* Hidden by default */
+            /* Make room for the button on the right */
+            right: 40px;
         }
         
         /* Indicator for the Color Picker box */
@@ -213,7 +215,7 @@
                         <!-- The input is disabled when transparent, but value is not changed, preventing the flash -->
                         <input type="text" id="bgColorHex" value="#ffffff" maxlength="7" class="w-full p-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm font-mono">
                         <!-- Transparency Toggle Button -->
-                        <button id="toggle-transparent" class="absolute inset-y-0 right-0 flex items-center justify-center p-2 rounded-r-md hover:bg-gray-100 transition-colors text-gray-600 w-10" title="Toggle Transparency">
+                        <button id="toggle-transparent" class="absolute inset-y-0 right-0 flex items-center justify-center p-2 rounded-r-md hover:bg-gray-100 transition-colors text-gray-600 w-10" style="z-index: 20;" title="Toggle Transparency">
                              <!-- SVG will be injected here -->
                         </button>
                     </div>
@@ -427,11 +429,8 @@
         function refreshTransparencyIcon(isTransparent) {
             const iconButton = document.getElementById('toggle-transparent');
             if (!iconButton) {
-                console.log('Icon button not found');
                 return;
             }
-            
-            console.log('Refreshing icon, transparent:', isTransparent);
             
             // Clear existing content
             iconButton.innerHTML = ''; 
@@ -459,7 +458,6 @@
                 line.setAttribute('y2', '23');
                 svg.appendChild(path1);
                 svg.appendChild(line);
-                console.log('Added eye-off icon');
             } else {
                 // Eye icon (normal)
                 const path1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -470,7 +468,6 @@
                 circle.setAttribute('r', '3');
                 svg.appendChild(path1);
                 svg.appendChild(circle);
-                console.log('Added eye icon');
             }
             
             iconButton.appendChild(svg);
